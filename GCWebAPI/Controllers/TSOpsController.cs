@@ -50,12 +50,16 @@ namespace GCWebAPI.Controllers
                 }
                 catch
                 {
-                    throw new HttpResponseException(HttpStatusCode.BadRequest); //Server not found
+                    List<string> error = new List<string>();
+                    error.Add("Error: Could not connect to PI Data Archive " + server); //Cannot connect to PI Data Archive
+                    return error;
                 }
             }
             else
             {
-                throw new HttpResponseException(HttpStatusCode.BadRequest); //Server is null
+                List<string> error = new List<string>();
+                error.Add("Error: PI Data Archive name is null"); //Server is null
+                return error;
             }
 
             PIPoint requestedPoint;
@@ -66,7 +70,9 @@ namespace GCWebAPI.Controllers
             }
             catch
             {
-                throw new HttpResponseException(HttpStatusCode.BadRequest); //PI Point not found
+                List<string> error = new List<string>();
+                error.Add("Error: PI Point " + point + " not found"); //PI Point not found
+                return error; 
             }
 
             IDictionary<string, object> attributes = requestedPoint.GetAttributes(); //Gets all PI Point attributes
@@ -95,7 +101,6 @@ namespace GCWebAPI.Controllers
         {
             PIServer srv;
 
-            //Instantiates PI Data Archive
             if (server != null)
             {
                 try
@@ -103,15 +108,18 @@ namespace GCWebAPI.Controllers
                     srv = new PIServers()[server];
                     srv.Connect();
                 }
-                catch
+                catch 
                 {
-                    throw new HttpResponseException(HttpStatusCode.BadRequest); //Server not found
+                    List<string> error = new List<string>();
+                    error.Add("Error: Could not connect to PI Data Archive " + server); //Cannot connect to PI Data Archive
+                    return error;
                 }
             }
             else
             {
-                throw new HttpResponseException(HttpStatusCode.BadRequest); //Server is null
-
+                List<string> error = new List<string>();
+                error.Add("Error: PI Data Archive name is null"); //Server is null
+                return error;
             }
 
             //Finds PI Point and gets current value
@@ -125,9 +133,11 @@ namespace GCWebAPI.Controllers
 
                 return result;
             }
-            catch (HttpResponseException e)
+            catch 
             {
-                throw new HttpResponseException(e.Response); 
+                List<string> error = new List<string>();
+                error.Add("Error: Could not get current value for " + point); 
+                return error;
             }
         }
                
@@ -142,7 +152,6 @@ namespace GCWebAPI.Controllers
         {
             PIServer srv;
 
-            //Instantiates PI Data Archive
             if (server != null)
             {
                 try
@@ -150,14 +159,15 @@ namespace GCWebAPI.Controllers
                     srv = new PIServers()[server];
                     srv.Connect();
                 }
-                catch
+                catch 
                 {
-                    throw new HttpResponseException(HttpStatusCode.BadRequest); //Server not found
+                    return new HttpResponseMessage(HttpStatusCode.NotFound); //Cannot connect to PI Data Archive
                 }
             }
             else
             {
-                throw new HttpResponseException(HttpStatusCode.BadRequest); //Server is null
+
+                return new HttpResponseMessage(HttpStatusCode.NotFound); //Server is null
             }
 
             //New PI Point attribute collection
@@ -167,16 +177,23 @@ namespace GCWebAPI.Controllers
             IDictionary<string, object> ptClassAttributes = srv.PointClasses["classic"].GetAttributes();
 
 
-            foreach (KeyValuePair<string, JToken> pair in data)
+            if (data != null)
             {
-                //always create classic PI Points
-                if(pair.Key.ToString() == "PointClass")
-                    attributes.Add(pair.Key.ToString(), "Classic");
-                else
+                foreach (KeyValuePair<string, JToken> pair in data)
                 {
-                    if (ptClassAttributes.ContainsKey(pair.Key.ToString())) //Confirms the attribute name exists
-                        attributes.Add(pair.Key, pair.Value.ToString());
-                }                
+                    //always create classic PI Points
+                    if(pair.Key.ToString() == "PointClass")
+                        attributes.Add(pair.Key.ToString(), "Classic");
+                    else
+                    {
+                        if (ptClassAttributes.ContainsKey(pair.Key.ToString())) //Confirms the attribute name exists
+                            attributes.Add(pair.Key, pair.Value.ToString());
+                    }                
+                }
+            }
+            else
+            {
+                return new HttpResponseMessage(HttpStatusCode.BadRequest); //request body is null
             }
 
             try
@@ -185,14 +202,15 @@ namespace GCWebAPI.Controllers
                 return new HttpResponseMessage(HttpStatusCode.Created);
 
             }
-            catch(HttpResponseException e)
+            catch (PIException e)
             {
-                throw new HttpResponseException(e.Response); //tag could not be created
+                return new HttpResponseMessage(HttpStatusCode.BadRequest); //tag could not be created - Most likely attributes are not set correctly
             }
-            catch(PIException e)
+            catch
             {
-                throw new Exception(e.Message); //tag could not be created - Most likely attributes are not set correctly
+                return new HttpResponseMessage(HttpStatusCode.BadRequest); //Could not create PI Point
             }
+
         }
 
         //Request Body Example - All classic attributes can be used
@@ -222,7 +240,6 @@ namespace GCWebAPI.Controllers
         {
             PIServer srv;
 
-            //Instantiates PI Data Archive
             if (server != null)
             {
                 try
@@ -230,28 +247,53 @@ namespace GCWebAPI.Controllers
                     srv = new PIServers()[server];
                     srv.Connect();
                 }
-                catch
+                catch 
                 {
-                    throw new HttpResponseException(HttpStatusCode.BadRequest); //Server not found
+                    List<string> error = new List<string>();
+                    error.Add("Error: Could not connect to PI Data Archive " + server); //Cannot connect to PI Data Archive
+                    return error;
                 }
             }
             else
             {
-                throw new HttpResponseException(HttpStatusCode.BadRequest); //Server is null
+                List<string> error = new List<string>();
+                error.Add("Error: PI Data Archive name is null"); //Server is null
+                return error;
             }
 
+
             AFValue newVal = new AFValue();
-            newVal.Value = data["Value"].ToString();
+            if (data != null)
+            {                
+                newVal.Value = data["Value"].ToString();
 
-            AFTime time = new AFTime(data["Timestamp"].ToString());
-            newVal.Timestamp = time;
+                AFTime time = new AFTime(data["Timestamp"].ToString());
+                newVal.Timestamp = time;
+            }
+            else
+            {
+                List<string> error = new List<string>();
+                error.Add("Error: request body is null"); //Request body is null
+                return error;
+            }
 
 
-            //Finds PI Point and gets current value
+            PIPoint requestedPoint;
+            //Finds PI Point
             try
             {
-                PIPoint requestedPoint = PIPoint.FindPIPoint(srv, point);
+                requestedPoint = PIPoint.FindPIPoint(srv, point);
+            }
+            catch
+            {
+                List<string> error = new List<string>();
+                error.Add("Error: PI Point " + point + " not found"); //PI Point not found
+                return error;
+            }
 
+            //Gets current value and updates snapshot
+            try
+            {
                 AFValue currVal = requestedPoint.CurrentValue();
 
                 requestedPoint.UpdateValue(newVal, OSIsoft.AF.Data.AFUpdateOption.Insert);
@@ -260,9 +302,11 @@ namespace GCWebAPI.Controllers
 
                 return result;
             }
-            catch (HttpResponseException e)
+            catch 
             {
-                throw new HttpResponseException(e.Response); 
+                List<string> error = new List<string>();
+                error.Add("Error: Could not update value for " + point);
+                return error;
             }
 
         }
